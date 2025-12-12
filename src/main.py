@@ -3,10 +3,15 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from src.config.database import get_db
 
+from src.controllers import upload_controller
+
+
 app = FastAPI(
     title="Projeto Hanami Backend",
     version="0.1.0"
 )
+
+app.include_router(upload_controller.router)
 
 @app.get("/", tags=["Health"])
 def read_root():
