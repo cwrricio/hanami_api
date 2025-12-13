@@ -3,41 +3,52 @@ from sqlalchemy.orm import Session
 from src.config.database import get_db
 from src.services.data_processor import process_dataset
 from src.models.vendas import Venda
+from src.config.logger import logger
 
 router = APIRouter()
 
 @router.post("/upload", tags=["Upload"])
 async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
     """
-    Recebe CSV/XLSX, limpa os dados e salva no Banco de Dados PostgreSQL.
+    Recebe CSV/XLSX, processa e salva no banco, registrando logs de auditoria.
     """
+    filename = file.filename
+    logger.info(f"Recebendo arquivo para upload: {filename}")
+
     try:
-        #Leitura e Processamento (ETL)
+        # Validação de Extensão
+        if not filename.lower().endswith(('.csv', '.xlsx')):
+            msg = f"Arquivo rejeitado (extensão inválida): {filename}"
+            logger.error(msg)
+            raise HTTPException(status_code=400, detail="Formato inválido. Use .csv ou .xlsx")
+
+        # Leitura e ETL
         content = await file.read()
-        df_limpo = process_dataset(content, file.filename)
+        try:
+            df_limpo = process_dataset(content, filename)
+        except Exception as e_etl:
+            logger.error(f"❌ Erro durante o ETL do arquivo {filename}: {str(e_etl)}")
+            raise HTTPException(status_code=422, detail=f"Erro na leitura dos dados: {str(e_etl)}")
 
-        # Conversão: DataFrame -> Lista de Dicionários
+        # Salvar no Banco
         records = df_limpo.to_dict(orient="records")
-
-        # Salvamento no Banco com bulk insert
         try:
             db.bulk_insert_mappings(Venda, records)
-            db.commit() 
-        except Exception as e:
-            db.rollback() # Desfaz se der erro (ex: ID duplicado)
-            # Verifica se é erro de duplicidade (IntegrityError)
-            if "duplicate key" in str(e) or "unique constraint" in str(e):
-                raise HTTPException(status_code=409, detail="Erro: Algumas transações já existem no banco de dados.")
-            raise e
+            db.commit()
+            logger.info(f"Sucesso: {len(records)} linhas inseridas no banco via arquivo {filename}.")
+        except Exception as e_db:
+            db.rollback()
+            logger.error(f"🔥 Erro de Banco de Dados ao salvar {filename}: {str(e_db)}")
+            raise HTTPException(status_code=500, detail="Erro ao salvar no banco de dados.")
 
         return {
             "status": "sucesso",
-            "mensagem": "Dados processados e salvos no banco com sucesso!",
-            "linhas_importadas": len(records),
-            "database": "PostgreSQL"
+            "mensagem": "Upload processado e logado.",
+            "linhas": len(records)
         }
 
     except HTTPException as he:
         raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro interno: {str(e)}")
+        logger.critical(f"☠️ Erro inesperado no sistema: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erro interno.")
