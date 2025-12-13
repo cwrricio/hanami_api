@@ -113,6 +113,6 @@ O sistema aplica uma "blindagem" automática durante o processamento:
    - **Title Case:** Nomes de clientes e produtos.
   
   Pode realizar o teste do tratamento dos dados rodando:
-  ```json
+  ```
   python tests/test_etl.py
 ```
