@@ -5,6 +5,8 @@ from sqlalchemy import text
 from src.config.database import get_db
 from src.controllers import upload_controller
 from src.config.logger import logger 
+from src.controllers import reports_controller
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,6 +23,7 @@ app = FastAPI(
 )
 
 app.include_router(upload_controller.router)
+app.include_router(reports_controller.router)
 
 @app.get("/", tags=["Health"])
 def read_root():
@@ -31,7 +34,7 @@ def health_check(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         logger.info("Health Check: Banco de dados conectado com sucesso.")
-        return {"status": "ok", "database": "Conectado 🚀"}
+        return {"status": "ok", "database": "Conectado"}
     except Exception as e:
         logger.error(f"Health Check Falhou: {str(e)}")
         return {"status": "error", "database": f"Erro: {str(e)}"}
